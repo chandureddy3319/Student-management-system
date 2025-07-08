@@ -1,58 +1,46 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Register - Student Records</title>
-  <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-  <main class="container">
-    <h2 style="color:var(--accent);">User Registration</h2>
-    <form id="register-form" style="max-width:400px;margin:auto;">
-      <label>Email</label>
-      <input type="email" name="email" required style="width:100%;padding:0.7em 1em;margin-bottom:1em;border-radius:4px;border:1px solid #ccc;">
-      <label>Username</label>
-      <input type="text" name="username" required minlength="3" style="width:100%;padding:0.7em 1em;margin-bottom:1em;border-radius:4px;border:1px solid #ccc;">
-      <label>Password</label>
-      <input type="password" name="password" required minlength="6" style="width:100%;padding:0.7em 1em;margin-bottom:1em;border-radius:4px;border:1px solid #ccc;">
-      <button type="submit" class="btn">Register</button>
-      <div id="register-msg" style="margin-top:1em;"></div>
-    </form>
-    <p style="text-align:center;margin-top:1em;">Already have an account? <a href="login.php">Login</a></p>
-  </main>
-  <footer>
-    Developed by [Your Name], [Your University] &copy; <?php echo date('Y'); ?>
-  </footer>
-  <script>
-    document.getElementById('register-form').onsubmit = function(e) {
-      e.preventDefault();
-      const form = e.target;
-      const data = {
-        email: form.email.value,
-        username: form.username.value,
-        password: form.password.value
-      };
-      const msg = document.getElementById('register-msg');
-      msg.innerHTML = '<div class="loader"></div>';
-      fetch('php/register.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      })
-      .then(res => res.json())
-      .then(res => {
-        if (res.success) {
-          msg.innerHTML = '<span style="color:var(--success);">Registration successful! <a href="login.php">Login now</a></span>';
-          form.reset();
-        } else {
-          msg.innerHTML = res.errors.map(e => `<span style='color:var(--danger);'>${e}</span>`).join('<br>');
-        }
-      })
-      .catch(() => {
-        msg.innerHTML = '<span style="color:var(--danger);">Server error. Try again.</span>';
-      });
-    };
-  </script>
-</body>
-</html> 
+<?php
+require_once 'db.php';
+header('Content-Type: application/json');
+
+$data = json_decode(file_get_contents('php://input'), true);
+$email = trim($data['email'] ?? '');
+$username = trim($data['username'] ?? '');
+$password = $data['password'] ?? '';
+$errors = [];
+
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $errors[] = 'Invalid email address.';
+}
+if (strlen($username) < 3) {
+    $errors[] = 'Username must be at least 3 characters.';
+}
+if (strlen($password) < 6) {
+    $errors[] = 'Password must be at least 6 characters.';
+}
+
+if (empty($errors)) {
+    $stmt = $conn->prepare('SELECT id FROM users WHERE email = ? OR username = ?');
+    $stmt->bind_param('ss', $email, $username);
+    $stmt->execute();
+    $stmt->store_result();
+    if ($stmt->num_rows > 0) {
+        $errors[] = 'Email or username already exists.';
+    }
+    $stmt->close();
+}
+
+if (empty($errors)) {
+    $hash = password_hash($password, PASSWORD_BCRYPT);
+    $stmt = $conn->prepare('INSERT INTO users (email, username, password) VALUES (?, ?, ?)');
+    $stmt->bind_param('sss', $email, $username, $hash);
+    if ($stmt->execute()) {
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'errors' => ['Registration failed. Try again.']]);
+    }
+    $stmt->close();
+} else {
+    echo json_encode(['success' => false, 'errors' => $errors]);
+}
+$conn->close();
+?> 
